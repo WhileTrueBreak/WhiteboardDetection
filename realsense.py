@@ -1,7 +1,6 @@
 import pyrealsense2 as rs
 import numpy as np
 import matplotlib.pyplot as plt
-import open3d as o3d
 from scipy.ndimage import shift
 import cv2
 import math
