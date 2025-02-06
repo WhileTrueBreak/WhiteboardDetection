@@ -32,13 +32,27 @@ class RealsenseCamera:
         self.depth_history = np.zeros((1,HEIGHT,WIDTH),dtype=np.uint16)
         self.vertex_history = np.zeros((1,HEIGHT,WIDTH,3),dtype=np.float32)
 
-    def depth2vertex(self, color_frame, depth_frame):
-        self.pc.map_to(color_frame)
-        points = self.pc.calculate(depth_frame)
-        v,t = points.get_vertices(), points.get_texture_coordinates()
-        vertices = np.asanyarray(v).view(np.float32).reshape(-1,3)
-        vertex_image = vertices.reshape((depth_frame.get_height(),depth_frame.get_width(),3))
-        return vertices, vertex_image
+        self.depth_sensor = self.profile.get_device().first_depth_sensor()
+        self.depth_scale = self.depth_sensor.get_depth_scale()
+        
+        self.color_profile = rs.video_stream_profile(self.profile.get_stream(rs.stream.color))
+        self.color_intrinsics = self.color_profile.get_intrinsics()
+
+        self.v, self.u = np.indices((HEIGHT, WIDTH))
+
+    def depth2vertex(self, depth_image):
+        z = depth_image*self.depth_scale
+        x = (self.u-self.color_intrinsics.ppx)*z/self.color_intrinsics.fx
+        y = (self.v-self.color_intrinsics.ppy)*z/self.color_intrinsics.fy
+
+        vertices = np.stack((x, y, z), axis=-1)
+        return vertices
+
+        # points = self.pc.calculate(depth_frame)
+        # v,t = points.get_vertices(), points.get_texture_coordinates()
+        # vertices = np.asanyarray(v).view(np.float32).reshape(-1,3)
+        # vertex_image = vertices.reshape((depth_frame.get_height(),depth_frame.get_width(),3))
+        # return vertices, vertex_image
 
     def get_next_frame(self):
         frames = self.pipeline.wait_for_frames()
@@ -65,7 +79,7 @@ class RealsenseCamera:
         )
         depth_colormap[depth_image == 0] = 10 # Set to grey if depth_image is 0
 
-        vertices, vertex_img = self.depth2vertex(color_frame, depth_frame)
+        vertex_img = self.depth2vertex(depth_image)
         vertex_history_new = np.roll(self.vertex_history, 1, axis=0)
         self.vertex_history = vertex_history_new
         self.vertex_history[0] = vertex_img
