@@ -30,8 +30,10 @@ if os.path.exists(f'{config.MODEL_NAME}.pth'):
 
 nextIndex = 0
 color_mapping = np.array([colorsys.hsv_to_rgb(i/config.NUM_CLASSES, 1, 1) for i in range(config.NUM_CLASSES)])
-cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-
+cap = cv2.VideoCapture(0)
+if not cap.isOpened():
+    print('failed to open webcam')
+    exit()
 with torch.no_grad():
     model = model.eval()
     while True:
