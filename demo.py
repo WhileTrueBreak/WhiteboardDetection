@@ -60,7 +60,7 @@ ax.set_xlim(0,5)
 ax.set_ylim(-2.5,2.5)
 ax.set_zlim(-2.5,2.5)
 ax.invert_xaxis()
-ax.invert_yaxis()
+ax.invert_zaxis()
 
 surface_artist = None
 scatter_artists = []
@@ -139,10 +139,10 @@ is_cam_updating = False
 cam_update_thread.join()
 cv2.destroyAllWindows()
 
-# A_coeff_arr = np.array(A_coeff_arr)[len(A_coeff_arr)//2:]
-# B_coeff_arr = np.array(B_coeff_arr)[len(B_coeff_arr)//2:]
-# C_coeff_arr = np.array(C_coeff_arr)[len(C_coeff_arr)//2:]
-# x = np.arange(len(A_coeff_arr))
+A_coeff_arr = np.array(A_coeff_arr)[len(A_coeff_arr)//2:]
+B_coeff_arr = np.array(B_coeff_arr)[len(B_coeff_arr)//2:]
+C_coeff_arr = np.array(C_coeff_arr)[len(C_coeff_arr)//2:]
+x = np.arange(len(A_coeff_arr))
 
 # plt.close('all')
 # plt.clf()
@@ -157,16 +157,16 @@ cv2.destroyAllWindows()
 #     a.legend()
 # plt.show()
 
-# plane_offset_dist = np.abs(C_coeff_arr)/np.sqrt(A_coeff_arr*A_coeff_arr + B_coeff_arr*B_coeff_arr + 1)
-# plane_offset_average = np.average(plane_offset_dist)
+plane_offset_dist = np.abs(C_coeff_arr)/np.sqrt(A_coeff_arr*A_coeff_arr + B_coeff_arr*B_coeff_arr + 1)
+plane_offset_average = np.average(plane_offset_dist)
 
-# plt.clf()
-# plt.plot(x, plane_offset_dist, label='offset')
-# plt.axhline(plane_offset_average, label='offset avg', color='red', linestyle='--')
-# plt.axhline(plane_offset_average+0.05, label='offset avg +5cm', color='green', linestyle='--')
-# plt.axhline(plane_offset_average-0.05, label='offset avg -5cm', color='green', linestyle='--')
-# plt.legend()
-# plt.xlabel('Frame')
-# plt.ylabel('Dist (M)')
-# plt.title('Whiteboard Plane Offset')
-# plt.show()
+plt.clf()
+plt.plot(x, plane_offset_dist, label='offset')
+plt.axhline(plane_offset_average, label='offset avg', color='red', linestyle='--')
+plt.axhline(plane_offset_average+0.05, label='offset avg +5cm', color='green', linestyle='--')
+plt.axhline(plane_offset_average-0.05, label='offset avg -5cm', color='green', linestyle='--')
+plt.legend()
+plt.xlabel('Frame')
+plt.ylabel('Dist (M)')
+plt.title('Whiteboard Plane Offset')
+plt.show()
