@@ -35,6 +35,7 @@ model = network.modeling.deeplabv3plus_mobilenet(num_classes=config.NUM_CLASSES,
 if os.path.exists(f'{config.MODEL_NAME}.pth'):
     print(f'Loading pretrained weights from {config.MODEL_NAME}.pth')
     model.load_state_dict(torch.load(f'{config.MODEL_NAME}.pth', map_location=device, weights_only=True))
+model.to(device)
 
 nextIndex = 0
 color_mapping = np.array([colorsys.hsv_to_rgb(i/config.NUM_CLASSES, 1, 1) for i in range(config.NUM_CLASSES)])
