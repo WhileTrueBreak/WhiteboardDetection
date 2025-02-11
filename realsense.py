@@ -100,12 +100,16 @@ if __name__ == "__main__":
     camera = RealsenseCamera()
     camera.setAveragingCount(10)
     while True:
-        _,_,ci,_,dc,_ = camera.get_next_frame()
+        _,_,ci,_,dc,vi = camera.get_next_frame()
+
+        vi[:,:,2] = 0
+
+        cv2.imshow('xy', vi)
 
         # Display the color and depth colormap side by side
-        images = np.hstack((ci, dc))
-        cv2.namedWindow('Color and Depth', cv2.WINDOW_NORMAL)
-        cv2.imshow('Color and Depth', images)
+        # images = np.hstack((ci, dc))
+        # cv2.namedWindow('Color and Depth', cv2.WINDOW_NORMAL)
+        # cv2.imshow('Color and Depth', images)
         
         # Break the loop if 'q' is pressed
         key = cv2.waitKey(1)

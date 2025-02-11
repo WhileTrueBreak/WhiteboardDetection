@@ -60,6 +60,43 @@ def solve_mask_quad(mask):
         shapes.append(approx)
     return shapes
 
+def plane2uv(x, y, z, a, b, c, realsense):
+    normal = np.array([a,b,-1])/np.sqrt(a**2+b**2+1)
+
+    beta = np.arcsin(normal[0])
+    alpha = np.atan2(-normal[1]/np.cos(beta), normal[2]/np.cos(beta))
+
+    rx = np.array([[1, 0            , 0             ], 
+                   [0, np.cos(alpha),-np.sin(alpha)], 
+                   [0, np.sin(alpha), np.cos(alpha) ]])
+    ry = np.array([[ np.cos(beta), 0, np.sin(beta)],
+                   [            0, 1,            0],
+                   [-np.sin(beta), 0, np.cos(beta)]])
+    r = np.dot(rx,ry)
+
+    xyz = np.array([x,y,z]).T
+    xyz = np.dot(xyz, r)
+
+    mask = xyz[:,2] != 0
+    u = np.zeros_like(xyz[:,2])
+    v = np.zeros_like(xyz[:,2])
+    u[mask] = -(xyz[mask,0]*realsense.color_intrinsics.fx)/xyz[mask,2]+realsense.color_intrinsics.ppx
+    v[mask] = (xyz[mask,1]*realsense.color_intrinsics.fy)/xyz[mask,2]+realsense.color_intrinsics.ppy
+
+    return u, v
+    
+
+    # zx = x*a
+    # zy = y*b
+    
+    # u = np.sqrt(x**2+zx**2)*np.sign(x)
+    # v = np.sqrt(y**2+zy**2)*np.sign(y)
+    # return u, v
+
+def uv2planeuv(u, v, da, db, dc, realsense, a, b, c):
+    x, y, z = uv2xyz(u, v, da, db, dc, realsense)
+    return plane2uv(x, y, z, a, b, c, realsense)
+
 if __name__ == '__main__':
     points = gen_points(100,2,1,100,0)
     points = np.vstack((points,[1, 1, 100]))

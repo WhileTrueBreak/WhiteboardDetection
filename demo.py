@@ -1,7 +1,7 @@
 
 from torchvision import transforms as T
 from realsense import RealsenseCamera
-from place_solver import solve_plane, solve_mask_quad, solve_depth, uv2xyz
+from place_solver import solve_plane, solve_mask_quad, solve_depth, uv2xyz, plane2uv, uv2planeuv
 import matplotlib.pyplot as plt
 from roboflow import Roboflow
 from dataset import Dataset
@@ -98,7 +98,7 @@ with torch.no_grad():
 
         dA, dB, dC = solve_depth(whiteboard_mask, di)
 
-        shapes = solve_mask_quad(whiteboard_full_mask)
+        shapes = solve_mask_quad(whiteboard_mask)
         for shape in shapes:
             cv2.drawContours(frame_out, [shape], -1, (0, 0, 255), 2)
 
@@ -118,14 +118,39 @@ with torch.no_grad():
         scatter_artists = []  # Reset the list
         plt_z = (A*plt_x + B*plt_y + C)
         surface_artist = ax.plot_surface(plt_z, plt_x, plt_y, alpha=0.5)
+        shape_u = []
+        shape_v = []
         for shape in shapes:
             for vertex in shape:
                 u, v = vertex[0]
+                shape_u.append(u)
+                shape_v.append(v)
                 x, y, z = uv2xyz(u, v, dA, dB, dC, camera)
                 scatter_artist = ax.scatter(z, x, y, c='r', marker='o')
                 scatter_artists.append(scatter_artist)
         ax.figure.canvas.flush_events()
         plt.pause(0.0001)
+
+        u = np.linspace(0, camera.color_intrinsics.width-1, int(camera.color_intrinsics.width/4), dtype=int)
+        v = np.linspace(0, camera.color_intrinsics.height-1, int(camera.color_intrinsics.height/4), dtype=int)
+        u, v = np.meshgrid(u, v)
+        u = u.flatten()
+        v = v.flatten()
+        plane_u, plane_v = uv2planeuv(u, v, dA, dB, dC, camera, A, B, C)
+        plane_u /= 1
+        plane_v /= 1
+        vis_plane = np.zeros((480, 640, 3), np.uint8)
+        for i in range(plane_u.shape[0]):
+            color = tuple(int(c) for c in ci[v[i], u[i]])
+            cv2.circle(vis_plane, (int(plane_u[i]), int(plane_v[i])), 2, tuple(color), -1)
+        shape_u = np.array(shape_u)
+        shape_v = np.array(shape_v)
+        plane_u, plane_v = uv2planeuv(shape_u, shape_v, dA, dB, dC, camera, A, B, C)
+        plane_u /= 1
+        plane_v /= 1
+        for i in range(plane_u.shape[0]):
+            cv2.circle(vis_plane, (int(plane_u[i]), int(plane_v[i])), 2, (0, 0, 255), -1)
+        cv2.imshow('Plane', vis_plane)
 
         cv2.imshow('Camera', frame_out)
         key = cv2.waitKey(1) & 0xFF
@@ -160,14 +185,26 @@ x = np.arange(len(A_coeff_arr))
 
 plane_offset_dist = np.abs(C_coeff_arr)/np.sqrt(A_coeff_arr*A_coeff_arr + B_coeff_arr*B_coeff_arr + 1)
 plane_offset_average = np.average(plane_offset_dist)
+plane_angle = np.arccos(1 / np.sqrt(A_coeff_arr**2+B_coeff_arr**2+1))
+plane_angle_average = np.average(plane_angle)
 
-plt.clf()
-plt.plot(x, plane_offset_dist, label='offset')
-plt.axhline(plane_offset_average, label='offset avg', color='red', linestyle='--')
-plt.axhline(plane_offset_average+0.05, label='offset avg +5cm', color='green', linestyle='--')
-plt.axhline(plane_offset_average-0.05, label='offset avg -5cm', color='green', linestyle='--')
-plt.legend()
-plt.xlabel('Frame')
-plt.ylabel('Dist (M)')
-plt.title('Whiteboard Plane Offset')
+fig, ax = plt.subplots(2, 1, sharex=True)
+ax[0].plot(x, plane_offset_dist, label='offset')
+ax[0].axhline(plane_offset_average, label='offset avg', color='red', linestyle='--')
+ax[0].axhline(plane_offset_average+0.05, label='offset avg +5cm', color='green', linestyle='--')
+ax[0].axhline(plane_offset_average-0.05, label='offset avg -5cm', color='green', linestyle='--')
+ax[0].legend()
+ax[0].set_xlabel('Frame')
+ax[0].set_ylabel('Dist (M)')
+ax[0].set_title('Whiteboard Plane Offset')
+
+ax[1].plot(x, plane_angle, label='angle')
+ax[1].axhline(plane_angle_average, label='angle avg', color='red', linestyle='--')
+ax[1].axhline(plane_angle_average+0.087, label='angle avg +5°', color='green', linestyle='--')
+ax[1].axhline(plane_angle_average-0.087, label='angle avg -5°', color='green', linestyle='--')
+ax[1].legend()
+ax[1].set_xlabel('Frame')
+ax[1].set_ylabel('Angle (Rad)')
+ax[1].set_title('Whiteboard Plane Angle')
+plt.tight_layout()
 plt.show()
