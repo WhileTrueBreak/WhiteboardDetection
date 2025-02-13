@@ -31,23 +31,6 @@ camera = RealsenseCamera()
 # init matplotlib
 matplotlib.use('TkAgg')
 # init plots/plot varibles
-plt_x = np.linspace(-2.5,2.5,2)
-plt_y = np.linspace(-2.5,2.5,2)
-plt_x,plt_y = np.meshgrid(plt_x,plt_y)
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
-ax.set_xlabel('Z')
-ax.set_ylabel('X')
-ax.set_zlabel('Y')
-ax.set_xlim(0,5)
-ax.set_ylim(-2.5,2.5)
-ax.set_zlim(-2.5,2.5)
-ax.invert_xaxis()
-ax.invert_zaxis()
-
-surface_artist = None
-scatter_artists = []
-
 A_coeff_arr = []
 B_coeff_arr = []
 C_coeff_arr = []
@@ -70,7 +53,7 @@ model.to(device)
 # init easyocr
 ocr_reader = easyocr.Reader(['en'])
 
-#global variables
+# global variables
 nextIndex = 0
 color_mapping = np.array([colorsys.hsv_to_rgb(i/config.NUM_CLASSES, 1, 1) for i in range(config.NUM_CLASSES)])
 
@@ -79,16 +62,19 @@ di = None
 vi = None
 is_cam_updating = True
 
+# start getting camera feed
 cam_update_thread = threading.Thread(target=update_images)
 cam_update_thread.start()
 
 with torch.no_grad():
     model = model.eval()
     while True:
+        # continue if images exist
         if ci is None or vi is None or di is None: continue
         ci_rgb = cv2.cvtColor(ci, cv2.COLOR_BGR2RGB)
         cam_res = ci_rgb.shape
 
+        # run detection model on color image
         input_img = cv2.resize(ci_rgb, (config.INPUT_SIZE[1], config.INPUT_SIZE[0]))
         img_tensor = transform(input_img).unsqueeze(0).to(device)
         pred = model(img_tensor).max(1)[1].cpu().numpy()[0]
@@ -108,11 +94,18 @@ with torch.no_grad():
         whiteboard_vertices = vi[whiteboard_mask]
         whiteboard_vertices = whiteboard_vertices[~(whiteboard_vertices==0).all(axis=1)]
 
-        dA, dB, dC = solve_depth(whiteboard_mask, di)
 
         shapes = solve_mask_quad(whiteboard_mask)
+        shape_u = []
+        shape_v = []
         for shape in shapes:
             cv2.drawContours(frame_out, [shape], -1, (0, 0, 255), 2)
+            for vertex in shape:
+                u, v = vertex[0]
+                shape_u.append(u)
+                shape_v.append(v)
+        shape_u = np.array(shape_u)
+        shape_v = np.array(shape_v)
 
         # solve the plane
         A, B, C = solve_plane(whiteboard_vertices)
@@ -122,31 +115,9 @@ with torch.no_grad():
         B_coeff_arr.append(B)
         C_coeff_arr.append(C)
 
-        # visualize key points
-        if surface_artist is not None:
-            surface_artist.remove()
-        for scatter_artist in scatter_artists:
-            scatter_artist.remove()
-        scatter_artists = []  # Reset the list
-        plt_z = (A*plt_x + B*plt_y + C)
-        surface_artist = ax.plot_surface(plt_z, plt_x, plt_y, alpha=0.5)
-        shape_u = []
-        shape_v = []
-        for shape in shapes:
-            for vertex in shape:
-                u, v = vertex[0]
-                shape_u.append(u)
-                shape_v.append(v)
-                x, y, z = uv2xyz(u, v, dA, dB, dC, camera)
-                scatter_artist = ax.scatter(z, x, y, c='r', marker='o')
-                scatter_artists.append(scatter_artist)
-        ax.figure.canvas.flush_events()
-        plt.pause(0.0001)
-        shape_u = np.array(shape_u)
-        shape_v = np.array(shape_v)
-
-        # render adjusted whiteboard
+        # render adjusted whiteboard if detected
         if shape_u.shape[0] > 0 and shape_v.shape[0] > 0:
+            # get uvs in plane frame
             shape_u2, shape_v2 = camera2planeuv(shape_u, shape_v, A, B, C, camera)
             min_u2, max_u2 = np.min(shape_u2), np.max(shape_u2)
             min_v2, max_v2 = np.min(shape_v2), np.max(shape_v2)
@@ -159,17 +130,21 @@ with torch.no_grad():
             vis_plane = np.zeros((u2.shape[0], u2.shape[1], 3), np.uint8) # offset plane space image
             u2f = u2.flatten() # plane space u
             v2f = v2.flatten() # plane space v
+            # map plane frame uvs back to camera frame
             u1, v1 = plane2camerauv(u2f, v2f, A, B, C, camera) # camera space uvs
             u1 = u1.astype(int)
             v1 = v1.astype(int)
+            # update plane frame image with colors from camera frame
             valid_mask = (u1 >= 0) & (u1 < ci.shape[1]) & (v1 >= 0) & (v1 < ci.shape[0])
             vis_plane[v2f[valid_mask]-v2_offset,u2f[valid_mask]-u2_offset] = ci[v1[valid_mask],u1[valid_mask]]
 
             # read whiteboard
             vis_plane = cv2.resize(vis_plane, (800, int(vis_plane.shape[0]/vis_plane.shape[1]*800)))
             vis_plane = cv2.flip(vis_plane, 1)
-            
             whiteboard_text_results = ocr_reader.readtext(vis_plane)
+            # results are in plane frame
+            # can be mapped to camera frame later
+            # label whiteboard
             for (bbox, text, prob) in whiteboard_text_results:
                 (tl, tr, br, bl) = bbox
                 tl = (int(tl[0]), int(tl[1]))
@@ -193,27 +168,16 @@ with torch.no_grad():
         if key == ord('q'):
             break
 
+# clean up
 is_cam_updating = False
 cam_update_thread.join()
 cv2.destroyAllWindows()
 
+# show plane stability
 A_coeff_arr = np.array(A_coeff_arr)#[len(A_coeff_arr)//2:]
 B_coeff_arr = np.array(B_coeff_arr)#[len(B_coeff_arr)//2:]
 C_coeff_arr = np.array(C_coeff_arr)#[len(C_coeff_arr)//2:]
 x = np.arange(len(A_coeff_arr))
-
-# plt.close('all')
-# plt.clf()
-# fig, ax = plt.subplots(3, 1, sharex=True)
-# ax[0].plot(x, A_coeff_arr, label='A')
-# ax[0].axhline(np.average(A_coeff_arr), label='A avg', color='red', linestyle='--')
-# ax[1].plot(x, B_coeff_arr, label='B')
-# ax[1].axhline(np.average(B_coeff_arr), label='B avg', color='red', linestyle='--')
-# ax[2].plot(x, C_coeff_arr, label='C')
-# ax[2].axhline(np.average(C_coeff_arr), label='C avg', color='red', linestyle='--')
-# for a in ax:
-#     a.legend()
-# plt.show()
 
 plane_offset_dist = np.abs(C_coeff_arr)/np.sqrt(A_coeff_arr*A_coeff_arr + B_coeff_arr*B_coeff_arr + 1)
 plane_offset_average = np.average(plane_offset_dist)
@@ -240,3 +204,4 @@ ax[1].set_ylabel('Angle (Rad)')
 ax[1].set_title('Whiteboard Plane Angle')
 plt.tight_layout()
 plt.show()
+
