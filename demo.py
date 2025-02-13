@@ -1,7 +1,7 @@
 
 from torchvision import transforms as T
 from realsense import RealsenseCamera
-from place_solver import solve_plane, solve_mask_quad, solve_depth, uv2xyz, plane2uv, uv2planeuv
+from place_solver import solve_plane, solve_mask_quad, solve_depth, uv2xyz, camera2planeuv, plane2camerauv
 import matplotlib.pyplot as plt
 from roboflow import Roboflow
 from dataset import Dataset
@@ -12,6 +12,7 @@ import matplotlib
 import threading
 import colorsys
 import network
+import easyocr
 import config
 import torch
 import cv2
@@ -19,36 +20,17 @@ import os
 
 def update_images():
     global ci, di, vi, camera, is_cam_updating
-    camera.setAveragingCount(7)
+    camera.setAveragingCount(5)
     while is_cam_updating:
         cf, df, ci, di, dc, vi = camera.get_next_frame()
     camera.stop()
 
+# init realsense camera
 camera = RealsenseCamera()
+
+# init matplotlib
 matplotlib.use('TkAgg')
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-transform = T.Compose([
-    T.ToTensor(),   
-    T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
-])
-model = network.modeling.deeplabv3plus_mobilenet(num_classes=config.NUM_CLASSES, output_stride=config.OUTPUT_STRIDE)
-if os.path.exists(f'{config.MODEL_NAME}.pth'):
-    print(f'Loading pretrained weights from {config.MODEL_NAME}.pth')
-    model.load_state_dict(torch.load(f'{config.MODEL_NAME}.pth', map_location=device, weights_only=True))
-model.to(device)
-
-nextIndex = 0
-color_mapping = np.array([colorsys.hsv_to_rgb(i/config.NUM_CLASSES, 1, 1) for i in range(config.NUM_CLASSES)])
-
-ci = None
-di = None
-vi = None
-is_cam_updating = True
-
-cam_update_thread = threading.Thread(target=update_images)
-cam_update_thread.start()
-
-
+# init plots/plot varibles
 plt_x = np.linspace(-2.5,2.5,2)
 plt_y = np.linspace(-2.5,2.5,2)
 plt_x,plt_y = np.meshgrid(plt_x,plt_y)
@@ -69,6 +51,36 @@ scatter_artists = []
 A_coeff_arr = []
 B_coeff_arr = []
 C_coeff_arr = []
+
+#init detection model
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+transform = T.Compose([
+    T.ToTensor(),   
+    T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
+])
+model = network.modeling.deeplabv3plus_mobilenet(num_classes=config.NUM_CLASSES, output_stride=config.OUTPUT_STRIDE)
+if os.path.exists(f'{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth'):
+    print(f'Loading pretrained weights from {config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth')
+    model.load_state_dict(torch.load(f'{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth', map_location=device, weights_only=True))
+else:
+    print(f'Model {config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth does not exist')
+    exit()
+model.to(device)
+
+# init easyocr
+ocr_reader = easyocr.Reader(['en'])
+
+#global variables
+nextIndex = 0
+color_mapping = np.array([colorsys.hsv_to_rgb(i/config.NUM_CLASSES, 1, 1) for i in range(config.NUM_CLASSES)])
+
+ci = None
+di = None
+vi = None
+is_cam_updating = True
+
+cam_update_thread = threading.Thread(target=update_images)
+cam_update_thread.start()
 
 with torch.no_grad():
     model = model.eval()
@@ -130,29 +142,49 @@ with torch.no_grad():
                 scatter_artists.append(scatter_artist)
         ax.figure.canvas.flush_events()
         plt.pause(0.0001)
-
-        u = np.linspace(0, camera.color_intrinsics.width-1, int(camera.color_intrinsics.width/4), dtype=int)
-        v = np.linspace(0, camera.color_intrinsics.height-1, int(camera.color_intrinsics.height/4), dtype=int)
-        u, v = np.meshgrid(u, v)
-        u = u.flatten()
-        v = v.flatten()
-        plane_u, plane_v = uv2planeuv(u, v, dA, dB, dC, camera, A, B, C)
-        plane_u /= 1
-        plane_v /= 1
-        vis_plane = np.zeros((480, 640, 3), np.uint8)
-        for i in range(plane_u.shape[0]):
-            color = tuple(int(c) for c in ci[v[i], u[i]])
-            cv2.circle(vis_plane, (int(plane_u[i]), int(plane_v[i])), 2, tuple(color), -1)
         shape_u = np.array(shape_u)
         shape_v = np.array(shape_v)
-        plane_u, plane_v = uv2planeuv(shape_u, shape_v, dA, dB, dC, camera, A, B, C)
-        plane_u /= 1
-        plane_v /= 1
-        for i in range(plane_u.shape[0]):
-            cv2.circle(vis_plane, (int(plane_u[i]), int(plane_v[i])), 2, (0, 0, 255), -1)
-        cv2.imshow('Plane', vis_plane)
+
+        # render adjusted whiteboard
+        if shape_u.shape[0] > 0 and shape_v.shape[0] > 0:
+            shape_u2, shape_v2 = camera2planeuv(shape_u, shape_v, A, B, C, camera)
+            min_u2, max_u2 = np.min(shape_u2), np.max(shape_u2)
+            min_v2, max_v2 = np.min(shape_v2), np.max(shape_v2)
+            u2_offset = int(np.floor(min_u2))
+            v2_offset = int(np.floor(min_v2))
+            u2, v2 = np.meshgrid(
+                np.arange(u2_offset ,np.floor(max_u2)+1, 1, dtype=int), 
+                np.arange(v2_offset ,np.floor(max_v2)+1, 1, dtype=int)
+            )
+            vis_plane = np.zeros((u2.shape[0], u2.shape[1], 3), np.uint8) # offset plane space image
+            u2f = u2.flatten() # plane space u
+            v2f = v2.flatten() # plane space v
+            u1, v1 = plane2camerauv(u2f, v2f, A, B, C, camera) # camera space uvs
+            u1 = u1.astype(int)
+            v1 = v1.astype(int)
+            valid_mask = (u1 >= 0) & (u1 < ci.shape[1]) & (v1 >= 0) & (v1 < ci.shape[0])
+            vis_plane[v2f[valid_mask]-v2_offset,u2f[valid_mask]-u2_offset] = ci[v1[valid_mask],u1[valid_mask]]
+
+            # read whiteboard
+            vis_plane = cv2.resize(vis_plane, (800, int(vis_plane.shape[0]/vis_plane.shape[1]*800)))
+            vis_plane = cv2.flip(vis_plane, 1)
+            
+            whiteboard_text_results = ocr_reader.readtext(vis_plane)
+            for (bbox, text, prob) in whiteboard_text_results:
+                (tl, tr, br, bl) = bbox
+                tl = (int(tl[0]), int(tl[1]))
+                tr = (int(tr[0]), int(tr[1]))
+                br = (int(br[0]), int(br[1]))
+                bl = (int(bl[0]), int(bl[1]))
+                cv2.line(vis_plane, tl, tr, (0, 0, 255), 1)
+                cv2.line(vis_plane, tr, br, (0, 0, 255), 1)
+                cv2.line(vis_plane, br, bl, (0, 0, 255), 1)
+                cv2.line(vis_plane, bl, tl, (0, 0, 255), 1)
+            cv2.imshow('Whiteboard', vis_plane)
 
         cv2.imshow('Camera', frame_out)
+
+        # key input
         key = cv2.waitKey(1) & 0xFF
         if key == ord(' '):
             while os.path.exists(f'res/image{nextIndex}.png'): nextIndex += 1
@@ -165,9 +197,9 @@ is_cam_updating = False
 cam_update_thread.join()
 cv2.destroyAllWindows()
 
-A_coeff_arr = np.array(A_coeff_arr)[len(A_coeff_arr)//2:]
-B_coeff_arr = np.array(B_coeff_arr)[len(B_coeff_arr)//2:]
-C_coeff_arr = np.array(C_coeff_arr)[len(C_coeff_arr)//2:]
+A_coeff_arr = np.array(A_coeff_arr)#[len(A_coeff_arr)//2:]
+B_coeff_arr = np.array(B_coeff_arr)#[len(B_coeff_arr)//2:]
+C_coeff_arr = np.array(C_coeff_arr)#[len(C_coeff_arr)//2:]
 x = np.arange(len(A_coeff_arr))
 
 # plt.close('all')
