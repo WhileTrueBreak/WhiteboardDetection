@@ -169,7 +169,7 @@ def camera2planeuv(u1, v1, a, b, c, realsense):
 
     u2 = fx*d2x+ppx
     v2 = fy*d2y+ppy
-    return u2, v2
+    return np.array([u2, v2])
 
 def plane2camerauv(u1, v1, a, b, c, realsense):
     fx = realsense.color_intrinsics.fx
@@ -199,7 +199,7 @@ def plane2camerauv(u1, v1, a, b, c, realsense):
 
     u2 = fx*d2x+ppx
     v2 = fy*d2y+ppy
-    return u2, v2
+    return np.array([u2, v2])
 
 if __name__ == '__main__':
     points = gen_points(100,2,1,100,0)

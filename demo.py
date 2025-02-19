@@ -109,13 +109,15 @@ with torch.no_grad():
 
         # solve the plane
         A, B, C = solve_plane(whiteboard_vertices)
-        print(f'{A:.2f}x{"+" if B>0 else ""}{B:.2f}y{"+" if C>0 else ""}{C:.2f}=z')
+        # print(f'{A:.2f}x{"+" if B>0 else ""}{B:.2f}y{"+" if C>0 else ""}{C:.2f}=z')
 
         A_coeff_arr.append(A)
         B_coeff_arr.append(B)
         C_coeff_arr.append(C)
 
+        print('----')
         # render adjusted whiteboard if detected
+        plane_content_centers = []
         if shape_u.shape[0] > 0 and shape_v.shape[0] > 0:
             # get uvs in plane frame
             shape_u2, shape_v2 = camera2planeuv(shape_u, shape_v, A, B, C, camera)
@@ -139,23 +141,35 @@ with torch.no_grad():
             vis_plane[v2f[valid_mask]-v2_offset,u2f[valid_mask]-u2_offset] = ci[v1[valid_mask],u1[valid_mask]]
 
             # read whiteboard
-            vis_plane = cv2.resize(vis_plane, (800, int(vis_plane.shape[0]/vis_plane.shape[1]*800)))
+            scale = 800/vis_plane.shape[1]
+            vis_plane = cv2.resize(vis_plane, (int(vis_plane.shape[1]*scale), int(vis_plane.shape[0]*scale)))
             vis_plane = cv2.flip(vis_plane, 1)
             whiteboard_text_results = ocr_reader.readtext(vis_plane)
             # results are in plane frame
             # can be mapped to camera frame later
             # label whiteboard
+            plane_content_centers.append((u2_offset,v2_offset))
+            plane_content_centers.append((max_u2-min_u2+u2_offset,max_v2-min_v2+v2_offset))
             for (bbox, text, prob) in whiteboard_text_results:
                 (tl, tr, br, bl) = bbox
                 tl = (int(tl[0]), int(tl[1]))
                 tr = (int(tr[0]), int(tr[1]))
                 br = (int(br[0]), int(br[1]))
                 bl = (int(bl[0]), int(bl[1]))
+                center_x = (tl[0] + tr[0] + br[0] + bl[0]) / 4
+                center_y = (tl[1] + tr[1] + br[1] + bl[1]) / 4
+                plane_content_centers.append(((vis_plane.shape[1]-center_x)/scale+u2_offset, center_y/scale+v2_offset))
+                cv2.circle(vis_plane, (center_x, center_y), 3, (255, 0, 0), -1)
                 cv2.line(vis_plane, tl, tr, (0, 0, 255), 1)
                 cv2.line(vis_plane, tr, br, (0, 0, 255), 1)
                 cv2.line(vis_plane, br, bl, (0, 0, 255), 1)
                 cv2.line(vis_plane, bl, tl, (0, 0, 255), 1)
             cv2.imshow('Whiteboard', vis_plane)
+        if len(plane_content_centers) >= 1:
+            plane_content_centers = np.array(plane_content_centers)
+            ccc_u, ccc_v = plane2camerauv(plane_content_centers[:,0], plane_content_centers[:,1], A, B, C, camera)
+            for (x, y) in zip(ccc_u, ccc_v):
+                cv2.circle(frame_out, (int(x), int(y)), 5, (255, 0, 0), -1)
 
         cv2.imshow('Camera', frame_out)
 
