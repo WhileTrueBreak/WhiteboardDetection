@@ -159,7 +159,7 @@ with torch.no_grad():
                 center_x = (tl[0] + tr[0] + br[0] + bl[0]) / 4
                 center_y = (tl[1] + tr[1] + br[1] + bl[1]) / 4
                 plane_content_centers.append(((vis_plane.shape[1]-center_x)/scale+u2_offset, center_y/scale+v2_offset))
-                cv2.circle(vis_plane, (center_x, center_y), 3, (255, 0, 0), -1)
+                cv2.circle(vis_plane, (int(center_x), int(center_y)), 3, (255, 0, 0), -1)
                 cv2.line(vis_plane, tl, tr, (0, 0, 255), 1)
                 cv2.line(vis_plane, tr, br, (0, 0, 255), 1)
                 cv2.line(vis_plane, br, bl, (0, 0, 255), 1)
