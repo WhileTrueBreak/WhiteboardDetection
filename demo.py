@@ -34,6 +34,7 @@ matplotlib.use('TkAgg')
 A_coeff_arr = []
 B_coeff_arr = []
 C_coeff_arr = []
+whiteboard_XYZ = []
 
 #init detection model
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -97,14 +98,23 @@ with torch.no_grad():
 
         # get shapes from mask
         shapes = solve_mask_quad(whiteboard_mask)
+
+        # process shapes
         shape_u = []
         shape_v = []
-        for shape in shapes:
-            cv2.drawContours(frame_out, [shape], -1, (0, 0, 255), 2)
-            for vertex in shape:
-                u, v = vertex[0]
-                shape_u.append(u)
-                shape_v.append(v)
+        if len(shapes) > 0:
+            # get midpoint of largest shapes
+            biggest_shape = max(shapes, key=cv2.contourArea)
+            uv_midpoint = np.array([np.average(biggest_shape[:,0,0]),np.average(biggest_shape[:,0,1])])
+            depth = np.dot(np.r_[uv_midpoint,1], depth_coeffs)
+            xyz_midpoint = camera.uvd2xyz(*uv_midpoint, depth)
+            whiteboard_XYZ.append(xyz_midpoint)
+            for shape in shapes:
+                cv2.drawContours(frame_out, [shape], -1, (0, 0, 255), 2)
+                for vertex in shape:
+                    u, v = vertex[0]
+                    shape_u.append(u)
+                    shape_v.append(v)
         shape_u = np.array(shape_u)
         shape_v = np.array(shape_v)
 
@@ -186,61 +196,43 @@ cam_update_thread.join()
 cv2.destroyAllWindows()
 
 # show plane stability
-A_coeff_arr = np.array(A_coeff_arr[3:])
-B_coeff_arr = np.array(B_coeff_arr[3:])
-C_coeff_arr = np.array(C_coeff_arr[3:])
-x = np.arange(len(A_coeff_arr))
+whiteboard_XYZ = np.array(whiteboard_XYZ)
+whiteboard_XYZ_avg = np.average(whiteboard_XYZ, axis=0)
+x = np.arange(len(whiteboard_XYZ))
 
 # plane_offset_dist = np.abs(C_coeff_arr)/np.sqrt(A_coeff_arr*A_coeff_arr + B_coeff_arr*B_coeff_arr + 1)
 # plane_offset_average = np.average(plane_offset_dist)
 # plane_angle = np.arccos(1 / np.sqrt(A_coeff_arr**2+B_coeff_arr**2+1))
 # plane_angle_average = np.average(plane_angle)
 
-plane_normal = np.array([A_coeff_arr, B_coeff_arr, np.ones_like(A_coeff_arr)]).T
-plane_normal = plane_normal / np.linalg.norm(plane_normal, axis=1, keepdims=True)
-plane_normal_average = np.average(plane_normal, axis=0)
+# plane_normal = np.array([A_coeff_arr, B_coeff_arr, np.ones_like(A_coeff_arr)]).T
+# plane_normal = plane_normal / np.linalg.norm(plane_normal, axis=1, keepdims=True)
+# plane_normal_average = np.average(plane_normal, axis=0)
+
+
 
 fig, ax = plt.subplots(3, 1, sharex=True)
-ax[0].plot(x, plane_normal[:,0], label='Normal X')
-ax[0].axhline(plane_normal_average[0], label='avg', color='red', linestyle='--')
-ax[0].axhline(-1, label='min', color='green', linestyle='--')
-ax[0].axhline(1, label='max', color='green', linestyle='--')
+ax[0].plot(x, whiteboard_XYZ[:,0], label='X')
+ax[0].axhline(whiteboard_XYZ_avg[0], label='avg', color='red', linestyle='--')
+ax[0].axhline(whiteboard_XYZ_avg[0]-0.05, label='min -5cm', color='green', linestyle='--')
+ax[0].axhline(whiteboard_XYZ_avg[0]+0.05, label='max +5cm', color='green', linestyle='--')
 ax[0].legend()
 ax[0].set_xlabel('Frame')
-ax[0].set_ylabel('Normal X')
-ax[1].plot(x, plane_normal[:,1], label='Normal Y')
-ax[1].axhline(plane_normal_average[1], label='avg', color='red', linestyle='--')
-ax[1].axhline(-1, label='min', color='green', linestyle='--')
-ax[1].axhline(1, label='max', color='green', linestyle='--')
+ax[0].set_ylabel('X')
+ax[1].plot(x, whiteboard_XYZ[:,1], label='Y')
+ax[1].axhline(whiteboard_XYZ_avg[1], label='avg', color='red', linestyle='--')
+ax[1].axhline(whiteboard_XYZ_avg[1]-0.05, label='min -5cm', color='green', linestyle='--')
+ax[1].axhline(whiteboard_XYZ_avg[1]+0.05, label='max +5cm', color='green', linestyle='--')
 ax[1].legend()
 ax[1].set_xlabel('Frame')
-ax[1].set_ylabel('Normal Y')
-ax[2].plot(x, plane_normal[:,2], label='Normal Z')
-ax[2].axhline(plane_normal_average[2], label='avg', color='red', linestyle='--')
-ax[2].axhline(-1, label='min', color='green', linestyle='--')
-ax[2].axhline(1, label='max', color='green', linestyle='--')
+ax[1].set_ylabel('Y')
+ax[2].plot(x, whiteboard_XYZ[:,2], label='Z')
+ax[2].axhline(whiteboard_XYZ_avg[2], label='avg', color='red', linestyle='--')
+ax[2].axhline(whiteboard_XYZ_avg[2]-0.05, label='min -5cm', color='green', linestyle='--')
+ax[2].axhline(whiteboard_XYZ_avg[2]+0.05, label='max +5cm', color='green', linestyle='--')
 ax[2].legend()
 ax[2].set_xlabel('Frame')
-ax[2].set_ylabel('Normal Z')
-
-# fig, ax = plt.subplots(2, 1, sharex=True)
-# ax[0].plot(x, plane_offset_dist, label='offset')
-# ax[0].axhline(plane_offset_average, label='offset avg', color='red', linestyle='--')
-# ax[0].axhline(plane_offset_average+0.05, label='offset avg +5cm', color='green', linestyle='--')
-# ax[0].axhline(plane_offset_average-0.05, label='offset avg -5cm', color='green', linestyle='--')
-# ax[0].legend()
-# ax[0].set_xlabel('Frame')
-# ax[0].set_ylabel('Dist (M)')
-# ax[0].set_title('Whiteboard Plane Offset')
-
-# ax[1].plot(x, plane_angle, label='angle')
-# ax[1].axhline(plane_angle_average, label='angle avg', color='red', linestyle='--')
-# ax[1].axhline(plane_angle_average+0.087, label='angle avg +5°', color='green', linestyle='--')
-# ax[1].axhline(plane_angle_average-0.087, label='angle avg -5°', color='green', linestyle='--')
-# ax[1].legend()
-# ax[1].set_xlabel('Frame')
-# ax[1].set_ylabel('Angle (Rad)')
-# ax[1].set_title('Whiteboard Plane Angle')
+ax[2].set_ylabel('Z')
 plt.tight_layout()
 plt.show()
 

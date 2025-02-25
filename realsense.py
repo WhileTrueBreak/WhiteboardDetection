@@ -48,11 +48,11 @@ class RealsenseCamera:
         vertices = np.stack((x, y, z), axis=-1)
         return vertices
 
-        # points = self.pc.calculate(depth_frame)
-        # v,t = points.get_vertices(), points.get_texture_coordinates()
-        # vertices = np.asanyarray(v).view(np.float32).reshape(-1,3)
-        # vertex_image = vertices.reshape((depth_frame.get_height(),depth_frame.get_width(),3))
-        # return vertices, vertex_image
+    def uvd2xyz(self, u, v, d):
+        z = d*self.depth_scale
+        x = (u-self.color_intrinsics.ppx)*z/self.color_intrinsics.fx
+        y = (v-self.color_intrinsics.ppy)*z/self.color_intrinsics.fy
+        return np.array([x,y,z])
 
     def get_next_frame(self):
         frames = self.pipeline.wait_for_frames()
