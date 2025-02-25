@@ -1,7 +1,7 @@
 
+from place_solver import solve_plane, solve_mask_quad, solve_depth, camera2planeuv, plane2camerauv
 from torchvision import transforms as T
 from realsense import RealsenseCamera
-from place_solver import solve_plane, solve_mask_quad, solve_depth, uv2xyz, camera2planeuv, plane2camerauv
 import matplotlib.pyplot as plt
 from roboflow import Roboflow
 from dataset import Dataset
@@ -93,8 +93,9 @@ with torch.no_grad():
         whiteboard_full_mask = (pred_cam_res > 0)
         whiteboard_vertices = vi[whiteboard_mask]
         whiteboard_vertices = whiteboard_vertices[~(whiteboard_vertices==0).all(axis=1)]
+        depth_coeffs = solve_depth(whiteboard_mask, di)
 
-
+        # get shapes from mask
         shapes = solve_mask_quad(whiteboard_mask)
         shape_u = []
         shape_v = []
@@ -108,19 +109,19 @@ with torch.no_grad():
         shape_v = np.array(shape_v)
 
         # solve the plane
-        A, B, C = solve_plane(whiteboard_vertices)
+        plane_coeffs = solve_plane(whiteboard_vertices)
         # print(f'{A:.2f}x{"+" if B>0 else ""}{B:.2f}y{"+" if C>0 else ""}{C:.2f}=z')
+        normal = np.array([plane_coeffs[0], plane_coeffs[1], -1])/np.sqrt(plane_coeffs[0]**2+plane_coeffs[1]**2+1)
 
-        A_coeff_arr.append(A)
-        B_coeff_arr.append(B)
-        C_coeff_arr.append(C)
+        A_coeff_arr.append(plane_coeffs[0])
+        B_coeff_arr.append(plane_coeffs[1])
+        C_coeff_arr.append(plane_coeffs[2])
 
-        print('----')
         # render adjusted whiteboard if detected
         plane_content_centers = []
         if shape_u.shape[0] > 0 and shape_v.shape[0] > 0:
             # get uvs in plane frame
-            shape_u2, shape_v2 = camera2planeuv(shape_u, shape_v, A, B, C, camera)
+            shape_u2, shape_v2 = camera2planeuv(shape_u, shape_v, *plane_coeffs, camera)
             min_u2, max_u2 = np.min(shape_u2), np.max(shape_u2)
             min_v2, max_v2 = np.min(shape_v2), np.max(shape_v2)
             u2_offset = int(np.floor(min_u2))
@@ -133,7 +134,7 @@ with torch.no_grad():
             u2f = u2.flatten() # plane space u
             v2f = v2.flatten() # plane space v
             # map plane frame uvs back to camera frame
-            u1, v1 = plane2camerauv(u2f, v2f, A, B, C, camera) # camera space uvs
+            u1, v1 = plane2camerauv(u2f, v2f, *plane_coeffs, camera) # camera space uvs
             u1 = u1.astype(int)
             v1 = v1.astype(int)
             # update plane frame image with colors from camera frame
@@ -146,10 +147,7 @@ with torch.no_grad():
             vis_plane = cv2.flip(vis_plane, 1)
             whiteboard_text_results = ocr_reader.readtext(vis_plane)
             # results are in plane frame
-            # can be mapped to camera frame later
             # label whiteboard
-            plane_content_centers.append((u2_offset,v2_offset))
-            plane_content_centers.append((max_u2-min_u2+u2_offset,max_v2-min_v2+v2_offset))
             for (bbox, text, prob) in whiteboard_text_results:
                 (tl, tr, br, bl) = bbox
                 tl = (int(tl[0]), int(tl[1]))
@@ -167,7 +165,7 @@ with torch.no_grad():
             cv2.imshow('Whiteboard', vis_plane)
         if len(plane_content_centers) >= 1:
             plane_content_centers = np.array(plane_content_centers)
-            ccc_u, ccc_v = plane2camerauv(plane_content_centers[:,0], plane_content_centers[:,1], A, B, C, camera)
+            ccc_u, ccc_v = plane2camerauv(plane_content_centers[:,0], plane_content_centers[:,1], *plane_coeffs, camera)
             for (x, y) in zip(ccc_u, ccc_v):
                 cv2.circle(frame_out, (int(x), int(y)), 5, (255, 0, 0), -1)
 
@@ -188,34 +186,61 @@ cam_update_thread.join()
 cv2.destroyAllWindows()
 
 # show plane stability
-A_coeff_arr = np.array(A_coeff_arr)#[len(A_coeff_arr)//2:]
-B_coeff_arr = np.array(B_coeff_arr)#[len(B_coeff_arr)//2:]
-C_coeff_arr = np.array(C_coeff_arr)#[len(C_coeff_arr)//2:]
+A_coeff_arr = np.array(A_coeff_arr[3:])
+B_coeff_arr = np.array(B_coeff_arr[3:])
+C_coeff_arr = np.array(C_coeff_arr[3:])
 x = np.arange(len(A_coeff_arr))
 
-plane_offset_dist = np.abs(C_coeff_arr)/np.sqrt(A_coeff_arr*A_coeff_arr + B_coeff_arr*B_coeff_arr + 1)
-plane_offset_average = np.average(plane_offset_dist)
-plane_angle = np.arccos(1 / np.sqrt(A_coeff_arr**2+B_coeff_arr**2+1))
-plane_angle_average = np.average(plane_angle)
+# plane_offset_dist = np.abs(C_coeff_arr)/np.sqrt(A_coeff_arr*A_coeff_arr + B_coeff_arr*B_coeff_arr + 1)
+# plane_offset_average = np.average(plane_offset_dist)
+# plane_angle = np.arccos(1 / np.sqrt(A_coeff_arr**2+B_coeff_arr**2+1))
+# plane_angle_average = np.average(plane_angle)
 
-fig, ax = plt.subplots(2, 1, sharex=True)
-ax[0].plot(x, plane_offset_dist, label='offset')
-ax[0].axhline(plane_offset_average, label='offset avg', color='red', linestyle='--')
-ax[0].axhline(plane_offset_average+0.05, label='offset avg +5cm', color='green', linestyle='--')
-ax[0].axhline(plane_offset_average-0.05, label='offset avg -5cm', color='green', linestyle='--')
+plane_normal = np.array([A_coeff_arr, B_coeff_arr, np.ones_like(A_coeff_arr)]).T
+plane_normal = plane_normal / np.linalg.norm(plane_normal, axis=1, keepdims=True)
+plane_normal_average = np.average(plane_normal, axis=0)
+
+fig, ax = plt.subplots(3, 1, sharex=True)
+ax[0].plot(x, plane_normal[:,0], label='Normal X')
+ax[0].axhline(plane_normal_average[0], label='avg', color='red', linestyle='--')
+ax[0].axhline(-1, label='min', color='green', linestyle='--')
+ax[0].axhline(1, label='max', color='green', linestyle='--')
 ax[0].legend()
 ax[0].set_xlabel('Frame')
-ax[0].set_ylabel('Dist (M)')
-ax[0].set_title('Whiteboard Plane Offset')
-
-ax[1].plot(x, plane_angle, label='angle')
-ax[1].axhline(plane_angle_average, label='angle avg', color='red', linestyle='--')
-ax[1].axhline(plane_angle_average+0.087, label='angle avg +5°', color='green', linestyle='--')
-ax[1].axhline(plane_angle_average-0.087, label='angle avg -5°', color='green', linestyle='--')
+ax[0].set_ylabel('Normal X')
+ax[1].plot(x, plane_normal[:,1], label='Normal Y')
+ax[1].axhline(plane_normal_average[1], label='avg', color='red', linestyle='--')
+ax[1].axhline(-1, label='min', color='green', linestyle='--')
+ax[1].axhline(1, label='max', color='green', linestyle='--')
 ax[1].legend()
 ax[1].set_xlabel('Frame')
-ax[1].set_ylabel('Angle (Rad)')
-ax[1].set_title('Whiteboard Plane Angle')
+ax[1].set_ylabel('Normal Y')
+ax[2].plot(x, plane_normal[:,2], label='Normal Z')
+ax[2].axhline(plane_normal_average[2], label='avg', color='red', linestyle='--')
+ax[2].axhline(-1, label='min', color='green', linestyle='--')
+ax[2].axhline(1, label='max', color='green', linestyle='--')
+ax[2].legend()
+ax[2].set_xlabel('Frame')
+ax[2].set_ylabel('Normal Z')
+
+# fig, ax = plt.subplots(2, 1, sharex=True)
+# ax[0].plot(x, plane_offset_dist, label='offset')
+# ax[0].axhline(plane_offset_average, label='offset avg', color='red', linestyle='--')
+# ax[0].axhline(plane_offset_average+0.05, label='offset avg +5cm', color='green', linestyle='--')
+# ax[0].axhline(plane_offset_average-0.05, label='offset avg -5cm', color='green', linestyle='--')
+# ax[0].legend()
+# ax[0].set_xlabel('Frame')
+# ax[0].set_ylabel('Dist (M)')
+# ax[0].set_title('Whiteboard Plane Offset')
+
+# ax[1].plot(x, plane_angle, label='angle')
+# ax[1].axhline(plane_angle_average, label='angle avg', color='red', linestyle='--')
+# ax[1].axhline(plane_angle_average+0.087, label='angle avg +5°', color='green', linestyle='--')
+# ax[1].axhline(plane_angle_average-0.087, label='angle avg -5°', color='green', linestyle='--')
+# ax[1].legend()
+# ax[1].set_xlabel('Frame')
+# ax[1].set_ylabel('Angle (Rad)')
+# ax[1].set_title('Whiteboard Plane Angle')
 plt.tight_layout()
 plt.show()
 

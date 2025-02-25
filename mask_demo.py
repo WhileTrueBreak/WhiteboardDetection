@@ -24,14 +24,14 @@ transform = T.Compose([
     T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
 ])
 model = network.modeling.deeplabv3plus_mobilenet(num_classes=config.NUM_CLASSES, output_stride=config.OUTPUT_STRIDE)
-if os.path.exists(f'{config.MODEL_NAME}.pth'):
-    print(f'Loading pretrained weights from {config.MODEL_NAME}.pth')
-    model.load_state_dict(torch.load(f'{config.MODEL_NAME}.pth', map_location=device, weights_only=True))
+if os.path.exists(f'{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth'):
+    print(f'Loading pretrained weights from {config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth')
+    model.load_state_dict(torch.load(f'{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth', map_location=device, weights_only=True))
 model.to(device)
 
 nextIndex = 0
 color_mapping = np.array([colorsys.hsv_to_rgb(i/config.NUM_CLASSES, 1, 1) for i in range(config.NUM_CLASSES)])
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(-1)
 if not cap.isOpened():
     print('failed to open webcam')
     exit()
