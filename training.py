@@ -30,7 +30,7 @@ model = network.modeling.deeplabv3plus_mobilenet(num_classes=config.NUM_CLASSES,
 if os.path.exists(f'{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth'):
     try:
         print(f'Loading pretrained weights from {config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth')
-        model.load_state_dict(torch.load(f'{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth', map_location=device, weights_only=True))
+        model.load_state_dict(torch.load(f'{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth', map_location=device, weights_only=True), strict=False)
     except Exception as e:
         print(e)
         print()
@@ -49,15 +49,16 @@ for training_input in training_inputs:
 print("loaded dataset")
 
 # training
-criterion = torch.nn.CrossEntropyLoss()
+weights =  torch.tensor([1, 2.5, 0.5],dtype=torch.float32).to(device)
+criterion = torch.nn.CrossEntropyLoss(weight=weights)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
 
 print("start training")
 
+model.train()
 for epoch in range(config.TRAINING_EPOCHS):
-    model.train()
     num_batches = dataset.create_batches(config.BATCH_SIZE)
-
     epoch_loss = 0
     for i in range(num_batches):
         imgs, masks = dataset.get_batch(i, transform, config.INPUT_SIZE)
@@ -74,7 +75,8 @@ for epoch in range(config.TRAINING_EPOCHS):
     model.eval()
     print(' '*console_cols, end='\r')
     print(f'Epoch {epoch+1}/{config.TRAINING_EPOCHS} | {num_batches}/{num_batches}, Loss: {epoch_loss/num_batches}')
-    torch.save(model.state_dict(), f'{config.MODEL_NAME}.pth')
+    torch.save(model.state_dict(), f'{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth')
+    scheduler.step()
 
 color_mapping = np.array([colorsys.hsv_to_rgb(i/config.NUM_CLASSES, 1, 1) for i in range(config.NUM_CLASSES)])
 
