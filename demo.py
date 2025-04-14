@@ -43,11 +43,11 @@ transform = T.Compose([
     T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
 ])
 model = network.modeling.deeplabv3plus_mobilenet(num_classes=config.NUM_CLASSES, output_stride=config.OUTPUT_STRIDE)
-if os.path.exists(f'{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth'):
-    print(f'Loading pretrained weights from {config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth')
-    model.load_state_dict(torch.load(f'{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth', map_location=device, weights_only=True))
+if os.path.exists(f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth'):
+    print(f'Loading pretrained weights from models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth')
+    model.load_state_dict(torch.load(f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth', map_location=device, weights_only=True))
 else:
-    print(f'Model {config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth does not exist')
+    print(f'Model models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth does not exist')
     exit()
 model.to(device)
 

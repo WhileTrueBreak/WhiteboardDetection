@@ -3,6 +3,7 @@ from PIL import Image
 import numpy as np
 import random
 import torch
+import time
 
 class Dataset:
 
@@ -32,3 +33,4 @@ class Dataset:
             imgs.append(img)
             masks.append(mask)
         return torch.cat(imgs, dim=0), torch.cat(masks, dim=0)
+

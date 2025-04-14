@@ -4,6 +4,7 @@ from realsense import RealsenseCamera
 from place_solver import solve_plane, solve_mask_quad, solve_depth, uv2xyz
 import matplotlib.pyplot as plt
 from roboflow import Roboflow
+from unet.ULite import ULite
 from dataset import Dataset
 from PIL import Image
 from glob import glob
@@ -24,9 +25,10 @@ transform = T.Compose([
     T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
 ])
 model = network.modeling.deeplabv3plus_mobilenet(num_classes=config.NUM_CLASSES, output_stride=config.OUTPUT_STRIDE)
-if os.path.exists(f'{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth'):
-    print(f'Loading pretrained weights from {config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth')
-    model.load_state_dict(torch.load(f'{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth', map_location=device, weights_only=True))
+# model = ULite(num_classes=config.NUM_CLASSES)
+if os.path.exists(f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth'):
+    print(f'Loading pretrained weights from models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth')
+    model.load_state_dict(torch.load(f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth', map_location=device, weights_only=True))
 model.to(device)
 
 nextIndex = 0
@@ -44,6 +46,10 @@ with torch.no_grad():
             break
         ci_rgb = cv2.cvtColor(ci, cv2.COLOR_BGR2RGB)
         cam_res = ci_rgb.shape
+
+        hsv = cv2.cvtColor(ci_rgb, cv2.COLOR_BGR2HSV)
+        hsv[:,:,2] = cv2.equalizeHist(hsv[:,:,2])
+        ci_rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
         input_img = cv2.resize(ci_rgb, (config.INPUT_SIZE[1], config.INPUT_SIZE[0]))
         img_tensor = transform(input_img).unsqueeze(0).to(device)
