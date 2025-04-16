@@ -30,14 +30,16 @@ training_transform = T.Compose([
     T.CenterCrop(config.INPUT_SIZE),
     T.ColorJitter(
         brightness=0.25,
-        contrast=0.15,  # optional, mild
+        contrast=0.15,
         saturation=0.3,
         hue=0.083
     ),
     T.RandomApply([T.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))], p=0.5),
     T.ToTensor(),
     AddRandomNoise(noise_prob=0.001),  # 0.1% noise
+    T.RandomErasing(p=0.3, scale=(0.02, 0.1), ratio=(0.3, 3.3)),
     T.Normalize(mean=(0.485, 0.456, 0.406),
+
                 std=(0.229, 0.224, 0.225))
 ])
 val_transform = T.Compose([

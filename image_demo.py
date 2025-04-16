@@ -59,7 +59,14 @@ with torch.no_grad():
         pred = model(img_tensor).max(1)[1].cpu().numpy()[0]
         pred = np.array(pred)
 
-        colorized_pred = (color_mapping[pred,:]*255).astype('uint8')
+        color_mapping = np.array([colorsys.hsv_to_rgb(i/2, 1, 1) for i in range(2)])
+        pred_full_mask = (pred > 0).astype(int)
+
+        kernel = np.ones((11,11), np.uint8)
+        pred_full_mask = cv2.morphologyEx(pred_full_mask.astype(np.uint8), cv2.MORPH_OPEN, kernel)
+        pred_full_mask = cv2.morphologyEx(pred_full_mask, cv2.MORPH_CLOSE, kernel)
+
+        colorized_pred = (color_mapping[pred_full_mask,:]*255).astype('uint8')
         colorized_pred = cv2.resize(colorized_pred, (cam_res[1], cam_res[0]), interpolation=cv2.INTER_NEAREST)
 
         # Overlay the original image and the colorized prediction
@@ -69,7 +76,8 @@ with torch.no_grad():
         # mask the vertex image with whiteboard mask
         pred_cam_res = cv2.resize(pred, (cam_res[1], cam_res[0]), interpolation=cv2.INTER_NEAREST)
         whiteboard_mask = (pred_cam_res == 1)
-        whiteboard_full_mask = (pred_cam_res > 0)
+        # whiteboard_full_mask = (pred_cam_res > 0)
+        whiteboard_full_mask = cv2.resize(pred_full_mask, (cam_res[1], cam_res[0]), interpolation=cv2.INTER_NEAREST)
 
         shapes = solve_mask_quad(whiteboard_full_mask)
         for shape in shapes:
