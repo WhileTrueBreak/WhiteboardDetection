@@ -59,6 +59,7 @@ if os.path.exists(f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth'):
         continue_input = input('Could not load weights, continue? [y/n] ')
         if continue_input.lower() != 'y':
             exit()
+model.to(device)
 
 # load training dataset
 dataset_path = f'{config.DATASET_NAME}-{config.DATASET_VERSION}/train'
