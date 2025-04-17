@@ -2,10 +2,8 @@
 from torchvision import transforms as T
 from realsense import RealsenseCamera
 from place_solver import solve_plane, solve_mask_quad, solve_depth, uv2xyz
-from unet.unet_model import UNet
 import matplotlib.pyplot as plt
 from roboflow import Roboflow
-from unet.ULite import ULite
 from dataset import Dataset
 from PIL import Image
 from glob import glob
@@ -25,8 +23,8 @@ transform = T.Compose([
     T.ToTensor(),   
     T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
 ])
-model = network.modeling.deeplabv3plus_mobilenet(num_classes=config.NUM_CLASSES, output_stride=config.OUTPUT_STRIDE)
-# model = ULite(num_classes=config.NUM_CLASSES)
+# model = network.modeling.deeplabv3plus_mobilenet(num_classes=config.NUM_CLASSES, output_stride=config.OUTPUT_STRIDE)
+model = network.modeling.deeplabv3plus_resnet50(num_classes=config.NUM_CLASSES, output_stride=config.OUTPUT_STRIDE)
 if os.path.exists(f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth'):
     print(f'Loading pretrained weights from models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth')
     model.load_state_dict(torch.load(f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth', map_location=device, weights_only=True))

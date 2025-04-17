@@ -1,10 +1,8 @@
 from sklearn.model_selection import train_test_split
 from torchvision import transforms as T
 from random_noise import AddRandomNoise
-from unet.unet_model import UNet
 import matplotlib.pyplot as plt
 from roboflow import Roboflow
-from unet.ULite import ULite
 from dataset import Dataset
 from PIL import Image
 from glob import glob
@@ -49,8 +47,8 @@ val_transform = T.Compose([
     T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
 ])
 
-model = network.modeling.deeplabv3plus_mobilenet(num_classes=config.NUM_CLASSES, output_stride=config.OUTPUT_STRIDE)
-# model = ULite(num_classes=config.NUM_CLASSES)
+# model = network.modeling.deeplabv3plus_mobilenet(num_classes=config.NUM_CLASSES, output_stride=config.OUTPUT_STRIDE)
+model = network.modeling.deeplabv3plus_resnet50(num_classes=config.NUM_CLASSES, output_stride=config.OUTPUT_STRIDE)
 if os.path.exists(f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth'):
     try:
         print(f'Loading pretrained weights from models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth')
@@ -88,6 +86,8 @@ for epoch in range(config.TRAINING_EPOCHS):
     print(f'Epoch {epoch} | LR: {optimizer.param_groups[0]["lr"]}')
 
     # Training Pass
+    for param in model.backbone.parameters():
+        param.requires_grad = False
     num_batches = training_dataset.create_batches(config.BATCH_SIZE)
     epoch_loss = 0
     model.train()
