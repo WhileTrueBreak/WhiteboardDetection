@@ -1,5 +1,4 @@
-# MODEL_NAME = 'wb_dl3pmn'
-MODEL_NAME = 'wb_dl3prn50'
+MODEL_NAME = 'wb_dl3pmn'
 OUTPUT_STRIDE = 16
 NUM_CLASSES = 3
 INPUT_SIZE = (512, 512)
