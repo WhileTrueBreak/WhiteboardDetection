@@ -1,10 +1,5 @@
-import pyrealsense2 as rs
 import numpy as np
-import matplotlib.pyplot as plt
-import cv2
-import math
 import threading
-import time
 from realsense import RealsenseCamera
 
 import OpenGL.GL as gl

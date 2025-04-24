@@ -1,15 +1,8 @@
 
 from torchvision import transforms as T
-from realsense import RealsenseCamera
-from place_solver import solve_plane, solve_mask_quad, solve_depth, uv2xyz
-import matplotlib.pyplot as plt
-from roboflow import Roboflow
-from dataset import Dataset
-from PIL import Image
-from glob import glob
+from place_solver import solve_mask_quad
 import numpy as np
 import matplotlib
-import threading
 import colorsys
 import network
 import config

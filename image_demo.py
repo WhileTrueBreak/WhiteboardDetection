@@ -1,15 +1,9 @@
 
 from torchvision import transforms as T
-from realsense import RealsenseCamera
-from place_solver import solve_plane, solve_mask_quad, solve_depth, uv2xyz
-import matplotlib.pyplot as plt
-from roboflow import Roboflow
-from dataset import Dataset
-from PIL import Image
+from place_solver import solve_mask_quad
 from glob import glob
 import numpy as np
 import matplotlib
-import threading
 import colorsys
 import network
 import config
@@ -84,5 +78,3 @@ with torch.no_grad():
         out_path = os.path.join('./output', filename)
         cv2.imwrite(out_path, frame_out)
         print(f'Saved predicted output to {out_path}')
-
-cv2.destroyAllWindows()

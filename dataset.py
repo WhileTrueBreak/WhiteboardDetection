@@ -3,7 +3,6 @@ from PIL import Image
 import numpy as np
 import random
 import torch
-import time
 
 class Dataset:
 
@@ -24,13 +23,16 @@ class Dataset:
         imgs = []
         masks = []
         for entry in self.batches[index]:
+            # Open the image and mask
             img = Image.open(entry[0]).convert('RGB')
-            img = transform(img).unsqueeze(0)
             mask = Image.open(entry[1])
-            mask = torch.tensor(np.array(mask)).unsqueeze(0)
-            if mask.shape[1] != crop_size[0] or mask.shape[2] != crop_size[1]:
-                mask = torch.nn.functional.interpolate(mask.unsqueeze(0).float(), size=crop_size, mode='nearest').long().squeeze(0)
-            imgs.append(img)
-            masks.append(mask)
+            # Apply the composed transform that handles both img and mask
+            img, mask = transform(img, mask)
+            mask = mask.squeeze(0).long()
+
+            imgs.append(img.unsqueeze(0))  # Add batch dimension
+            masks.append(mask.unsqueeze(0))  # Add batch dimension
+
+        # Concatenate all images and masks into batches
         return torch.cat(imgs, dim=0), torch.cat(masks, dim=0)
 

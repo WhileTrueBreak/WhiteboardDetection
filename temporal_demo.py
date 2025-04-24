@@ -1,45 +1,41 @@
 
 from torchvision import transforms as T
-from realsense import RealsenseCamera
-from place_solver import solve_plane, solve_mask_quad, solve_depth, uv2xyz
-import matplotlib.pyplot as plt
-from roboflow import Roboflow
-from dataset import Dataset
-from PIL import Image
-from glob import glob
 import numpy as np
 import matplotlib
-import threading
 import colorsys
 import network
-import config
 import torch
 import cv2
 import os
 
+from place_solver import solve_mask_quad
+import config
+
 matplotlib.use('TkAgg')
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-transform = T.Compose([
-    T.ToTensor(),   
-    T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
-])
 model = network.modeling.deeplabv3plus_mobilenet(num_classes=config.NUM_CLASSES, output_stride=config.OUTPUT_STRIDE)
 if os.path.exists(f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth'):
     print(f'Loading pretrained weights from models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth')
     model.load_state_dict(torch.load(f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth', map_location=device, weights_only=True))
 model.to(device)
 
-savePeriod = 10
+transform = T.Compose([
+    T.ToTensor(),   
+    T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
+])
 
-nextIndex = 0
-frameIndex = 0
-predList = np.zeros((savePeriod, config.INPUT_SIZE[0], config.INPUT_SIZE[1]))
+save_period = 10
+pred_list = np.zeros((save_period, config.INPUT_SIZE[0], config.INPUT_SIZE[1]))
+next_index = 0
+frame_index = 0
 
 color_mapping = np.array([colorsys.hsv_to_rgb(i/config.NUM_CLASSES, 1, 1) for i in range(config.NUM_CLASSES)])
-cap = cv2.VideoCapture(-1)
+cap = cv2.VideoCapture(2)
 if not cap.isOpened():
     print('failed to open webcam')
     exit()
+
 with torch.no_grad():
     model = model.eval()
     while True:
@@ -50,22 +46,18 @@ with torch.no_grad():
         ci_rgb = cv2.cvtColor(ci, cv2.COLOR_BGR2RGB)
         cam_res = ci_rgb.shape
 
-        # hsv = cv2.cvtColor(ci_rgb, cv2.COLOR_BGR2HSV)
-        # hsv[:,:,2] = cv2.equalizeHist(hsv[:,:,2])
-        # ci_rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-
         input_img = cv2.resize(ci_rgb, (config.INPUT_SIZE[1], config.INPUT_SIZE[0]))
         img_tensor = transform(input_img).unsqueeze(0).to(device)
         pred = model(img_tensor).max(1)[1].cpu().numpy()[0]
         pred = np.array(pred)
 
         # save to predlist
-        predList[frameIndex%savePeriod] = pred
+        pred_list[frame_index%save_period] = pred
 
         # filter for any pixel that was greater than 0 within n frames
-        hasWhiteboard = (np.count_nonzero(predList > 0, axis=0) > 0).astype(int)
+        has_whiteboard = (np.count_nonzero(pred_list > 0, axis=0) > 0).astype(int)
 
-        colorized_pred = (color_mapping[hasWhiteboard,:]*255).astype('uint8')
+        colorized_pred = (color_mapping[has_whiteboard,:]*255).astype('uint8')
         colorized_pred = cv2.resize(colorized_pred, (cam_res[1], cam_res[0]), interpolation=cv2.INTER_NEAREST)
 
         # Overlay the original image and the colorized prediction
@@ -73,7 +65,7 @@ with torch.no_grad():
         frame_out = cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR)
 
         # mask the vertex image with whiteboard mask
-        pred_cam_res = cv2.resize(hasWhiteboard, (cam_res[1], cam_res[0]), interpolation=cv2.INTER_NEAREST)
+        pred_cam_res = cv2.resize(has_whiteboard, (cam_res[1], cam_res[0]), interpolation=cv2.INTER_NEAREST)
         whiteboard_mask = (pred_cam_res == 1)
 
         shapes = solve_mask_quad(whiteboard_mask)
@@ -88,6 +80,6 @@ with torch.no_grad():
             print(f'Saved res/image{nextIndex}.png')
         if key == ord('q'):
             break
-        frameIndex += 1
+        frame_index += 1
 
 cv2.destroyAllWindows()

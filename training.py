@@ -1,7 +1,6 @@
 from sklearn.model_selection import train_test_split
 from torchvision import transforms as T
-from random_noise import AddRandomNoise
-import matplotlib.pyplot as plt
+from torch_transforms import *
 from roboflow import Roboflow
 from dataset import Dataset
 from PIL import Image
@@ -23,28 +22,28 @@ version.download('png-mask-semantic')
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-training_transform = T.Compose([
-    T.Resize(config.INPUT_SIZE),
-    T.CenterCrop(config.INPUT_SIZE),
-    T.ColorJitter(
+training_transform = Compose([
+    Resize(config.INPUT_SIZE),
+    CenterCrop(config.INPUT_SIZE),
+    ColorJitter(
         brightness=0.25,
         contrast=0.15,
         saturation=0.3,
         hue=0.083
     ),
-    T.RandomApply([T.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))], p=0.5),
-    T.ToTensor(),
+    RandomApply([GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))], p=0.5),
+    ToTensor(),
     AddRandomNoise(noise_prob=0.001),  # 0.1% noise
-    T.RandomErasing(p=0.3, scale=(0.02, 0.1), ratio=(0.3, 3.3)),
-    T.Normalize(mean=(0.485, 0.456, 0.406),
-
-                std=(0.229, 0.224, 0.225))
+    ScaleImage(scale_min=0.5, scale_max=1),
+    AffineTransform(degrees=15, shear=15),
+    ScaleImage(scale_min=1, scale_max=1.5),
+    Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
 ])
-val_transform = T.Compose([
-    T.Resize(config.INPUT_SIZE),
-    T.CenterCrop(config.INPUT_SIZE),
-    T.ToTensor(),
-    T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
+val_transform = Compose([
+    Resize(config.INPUT_SIZE),
+    CenterCrop(config.INPUT_SIZE),
+    ToTensor(),
+    Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
 ])
 
 model = network.modeling.deeplabv3plus_mobilenet(num_classes=config.NUM_CLASSES, output_stride=config.OUTPUT_STRIDE)
@@ -77,7 +76,7 @@ print("loaded dataset")
 # training
 weights =  torch.tensor([1, 2.5, 0.5],dtype=torch.float32,device=device)
 criterion = torch.nn.CrossEntropyLoss(weight=weights)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=1, factor=0.5)
 
 print("start training")
@@ -85,9 +84,6 @@ best_val_loss = float('inf')
 for epoch in range(config.TRAINING_EPOCHS):
     print(f'Epoch {epoch} | LR: {optimizer.param_groups[0]["lr"]}')
 
-    # Training Pass
-    for param in model.backbone.parameters():
-        param.requires_grad = False
     num_batches = training_dataset.create_batches(config.BATCH_SIZE)
     epoch_loss = 0
     model.train()
@@ -125,7 +121,7 @@ for epoch in range(config.TRAINING_EPOCHS):
             print(f'[Val] Epoch {epoch+1}/{config.TRAINING_EPOCHS} | {j+1}/{val_batches}, Loss: {val_loss/(j+1):.4f}', end='\r')
     avg_val_loss = val_loss/val_batches
     print(' ' * console_cols, end='\r')
-    print(f'[Val] Epoch {epoch+1} complete, Avg Loss: {avg_val_loss:.4f}')
+    print(f'[Val] Epoch {epoch+1} complete, Avg Loss: {avg_val_loss:.4f}{"*" if avg_val_loss < best_val_loss else ""}')
     
     ####
     if avg_val_loss < best_val_loss:
@@ -133,21 +129,3 @@ for epoch in range(config.TRAINING_EPOCHS):
         torch.save(model.state_dict(), f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth')
         best_val_loss = avg_val_loss
     scheduler.step(avg_val_loss)
-
-color_mapping = np.array([colorsys.hsv_to_rgb(i/config.NUM_CLASSES, 1, 1) for i in range(config.NUM_CLASSES)])
-
-with torch.no_grad():
-    model = model.eval()
-    img = Image.open('test.jpg').convert('RGB')
-    img_size = img.size
-    img_tensor = transform(img).unsqueeze(0).to(device)
-
-    pred = model(img_tensor).max(1)[1].cpu().numpy()[0]
-    pred = np.array(pred)
-    colorized_pred = (color_mapping[pred,:]*255).astype('uint8')
-    colorized_pred = Image.fromarray(colorized_pred)
-    colorized_pred = colorized_pred.resize(img_size)
-
-    # Overlay the original image and the colorized prediction
-    overlay = Image.blend(img, colorized_pred, alpha=0.5)
-    overlay.save('overlay.png')

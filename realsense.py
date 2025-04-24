@@ -1,13 +1,6 @@
 import pyrealsense2 as rs
 import numpy as np
-import matplotlib.pyplot as plt
-from scipy.ndimage import shift
 import cv2
-import math
-
-import OpenGL.GL as gl
-import OpenGL.GLUT as glut
-import OpenGL.GLU as glu
 
 WIDTH = 640
 HEIGHT = 480
