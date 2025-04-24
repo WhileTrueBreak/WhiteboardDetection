@@ -5,6 +5,7 @@ import matplotlib
 import colorsys
 import network
 import torch
+import time
 import cv2
 import os
 
@@ -29,6 +30,10 @@ save_period = 10
 pred_list = np.zeros((save_period, config.INPUT_SIZE[0], config.INPUT_SIZE[1]))
 next_index = 0
 frame_index = 0
+
+start_time = time.time()
+frames = []
+timestamps = []
 
 color_mapping = np.array([colorsys.hsv_to_rgb(i/config.NUM_CLASSES, 1, 1) for i in range(config.NUM_CLASSES)])
 cap = cv2.VideoCapture(2)
@@ -73,6 +78,9 @@ with torch.no_grad():
             cv2.drawContours(frame_out, [shape], -1, (0, 0, 255), 2)
         cv2.imshow('Camera', frame_out)
 
+        frames.append(frame_out)
+        timestamps.append(time.time()-start_time)
+
         key = cv2.waitKey(1) & 0xFF
         if key == ord(' '):
             while os.path.exists(f'res/image{nextIndex}.png'): nextIndex += 1
@@ -81,5 +89,19 @@ with torch.no_grad():
         if key == ord('q'):
             break
         frame_index += 1
-
 cv2.destroyAllWindows()
+
+fps = 60
+frame_time = 1/fps
+frame_durations = [t - s for s, t in zip(timestamps, timestamps[1:])]
+frame_durations.append(frame_durations[-1])
+video = cv2.VideoWriter('output.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps, (frames[0].shape[1], frames[0].shape[0]))
+next_frame = 1
+running = frame_durations[0]
+elapsed = 0
+while next_frame < len(frame_durations):
+    video.write(frames[next_frame-1])
+    elapsed += frame_time
+    if elapsed >= running:
+        running += frame_durations[next_frame]
+        next_frame += 1
