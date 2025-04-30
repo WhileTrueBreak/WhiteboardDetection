@@ -36,7 +36,7 @@ frames = []
 timestamps = []
 
 color_mapping = np.array([colorsys.hsv_to_rgb(i/config.NUM_CLASSES, 1, 1) for i in range(config.NUM_CLASSES)])
-cap = cv2.VideoCapture(2)
+cap = cv2.VideoCapture(-1)
 if not cap.isOpened():
     print('failed to open webcam')
     exit()
