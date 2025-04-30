@@ -95,7 +95,7 @@ fps = 60
 frame_time = 1/fps
 frame_durations = [t - s for s, t in zip(timestamps, timestamps[1:])]
 frame_durations.append(frame_durations[-1])
-video = cv2.VideoWriter('output.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps, (frames[0].shape[1], frames[0].shape[0]))
+video = cv2.VideoWriter('output/output.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps, (frames[0].shape[1], frames[0].shape[0]))
 next_frame = 1
 running = frame_durations[0]
 elapsed = 0
