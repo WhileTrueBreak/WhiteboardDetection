@@ -1,8 +1,6 @@
-from torchvision import transforms as T
-from PIL import Image
+from roboflow import Roboflow
 from glob import glob
 import numpy as np
-import random
 import torch
 import cv2
 import os
@@ -11,19 +9,27 @@ from torch_transforms import *
 from dataset import Dataset
 import config
 
+with open('key.txt') as f:
+    rf = Roboflow(api_key=f.read().strip())
+project = rf.workspace('whiletrue-xopuj').project(config.DATASET_NAME.lower())
+version = project.version(config.DATASET_VERSION)
+version.download('png-mask-semantic')
+
 # Define your training transform (unchanged)
 training_transform = Compose([
     Resize(config.INPUT_SIZE),
     CenterCrop(config.INPUT_SIZE),
+    RandomHorizontalFlip(flip_prob=0.5),
     ColorJitter(
         brightness=0.25,
-        contrast=0.15,
-        saturation=0.3,
-        hue=0.083
+        contrast=0.25,
+        saturation=0.25,
+        hue=0.1
     ),
     RandomApply([GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))], p=0.5),
     ToTensor(),
     AddRandomNoise(noise_prob=0.001),  # 0.1% noise
+    # ScaleImage(scale_min=0.5, scale_max=1.5),
     ScaleImage(scale_min=0.5, scale_max=1),
     AffineTransform(degrees=15, shear=15),
     ScaleImage(scale_min=1, scale_max=1.5),

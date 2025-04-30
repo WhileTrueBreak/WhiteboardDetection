@@ -25,15 +25,17 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 training_transform = Compose([
     Resize(config.INPUT_SIZE),
     CenterCrop(config.INPUT_SIZE),
+    RandomHorizontalFlip(flip_prob=0.5),
     ColorJitter(
         brightness=0.25,
-        contrast=0.15,
-        saturation=0.3,
-        hue=0.083
+        contrast=0.25,
+        saturation=0.25,
+        hue=0.1
     ),
     RandomApply([GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))], p=0.5),
     ToTensor(),
     AddRandomNoise(noise_prob=0.001),  # 0.1% noise
+    # ScaleImage(scale_min=0.5, scale_max=1.5),
     ScaleImage(scale_min=0.5, scale_max=1),
     AffineTransform(degrees=15, shear=15),
     ScaleImage(scale_min=1, scale_max=1.5),
@@ -47,7 +49,17 @@ val_transform = Compose([
 ])
 
 model = network.modeling.deeplabv3plus_mobilenet(num_classes=config.NUM_CLASSES, output_stride=config.OUTPUT_STRIDE)
-if os.path.exists(f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth'):
+if os.path.exists(f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls_latest.pth'):
+    try:
+        print(f'Loading pretrained weights from models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls_latest.pth')
+        model.load_state_dict(torch.load(f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls_latest.pth', map_location=device, weights_only=True), strict=False)
+    except Exception as e:
+        print(e)
+        print()
+        continue_input = input('Could not load weights, continue? [y/n] ')
+        if continue_input.lower() != 'y':
+            exit()
+elif os.path.exists(f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth'):
     try:
         print(f'Loading pretrained weights from models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth')
         model.load_state_dict(torch.load(f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth', map_location=device, weights_only=True), strict=False)
@@ -77,10 +89,11 @@ print("loaded dataset")
 weights =  torch.tensor([1, 2.5, 0.5],dtype=torch.float32,device=device)
 criterion = torch.nn.CrossEntropyLoss(weight=weights)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=1, factor=0.5)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=2, factor=0.5)
 
 print("start training")
 best_val_loss = float('inf')
+progress_counter = 0
 for epoch in range(config.TRAINING_EPOCHS):
     print(f'Epoch {epoch} | LR: {optimizer.param_groups[0]["lr"]}')
 
@@ -124,8 +137,15 @@ for epoch in range(config.TRAINING_EPOCHS):
     print(f'[Val] Epoch {epoch+1} complete, Avg Loss: {avg_val_loss:.4f}{"*" if avg_val_loss < best_val_loss else ""}')
     
     ####
+    torch.save(model.state_dict(), f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls_latest.pth')
     if avg_val_loss < best_val_loss:
         os.makedirs("models", exist_ok=True)
         torch.save(model.state_dict(), f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth')
         best_val_loss = avg_val_loss
+        progress_counter = 0
+    else:
+        progress_counter += 1
+        if progress_counter >= 10:
+            print("No improvement made in last 10 epochs, stopping early.")
+            break
     scheduler.step(avg_val_loss)

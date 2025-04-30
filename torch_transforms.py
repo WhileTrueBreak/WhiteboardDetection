@@ -127,3 +127,14 @@ class AffineTransform:
         mask = T.functional.affine(mask, angle=angle, translate=(0, 0), scale=1, shear=[shear_x, shear_y], interpolation=T.InterpolationMode.NEAREST)
         
         return img, mask
+
+class RandomHorizontalFlip:
+    def __init__(self, flip_prob=0.5):
+        self.p = flip_prob
+
+    def __call__(self, img, mask):
+        if torch.rand(1).item() < self.p:
+            img = F.hflip(img)
+            mask = F.hflip(mask)
+        return img, mask
+
