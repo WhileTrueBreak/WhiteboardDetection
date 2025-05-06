@@ -1,5 +1,6 @@
 from torchvision import transforms as T
 import numpy as np
+import argparse
 import colorsys
 import network
 import torch
@@ -32,10 +33,15 @@ def overlay_image(image, pred):
 
 if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    parser = argparse.ArgumentParser(description='Image Demo')
+    parser.add_argument('--model-path', type=str, default=f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth', help='Path to the model .pth file')
+    args = parser.parse_args()
+
     model = network.modeling.deeplabv3plus_mobilenet(num_classes=config.NUM_CLASSES, output_stride=config.OUTPUT_STRIDE)
-    if os.path.exists(f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth'):
-        print(f'Loading pretrained weights from models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth')
-        model.load_state_dict(torch.load(f'models/cp_{config.MODEL_NAME}_{config.NUM_CLASSES}cls.pth', map_location=device, weights_only=True))
+    if os.path.exists(args.model_path):
+        print(f'Loading pretrained weights from {args.model_path}')
+        model.load_state_dict(torch.load(args.model_path, map_location=device, weights_only=True))
     model.to(device)
 
     transform = T.Compose([
